@@ -45,7 +45,7 @@ one_number_regex = re.compile(r"[0-9]")
 num_symbol_regex = re.compile(r"\.|_|-")
 time_symbol_regex = re.compile(r"-|:|\s")
 only_alpha_num_regex = re.compile(r"^[0-9a-zA-Z]+$")
-only_alpha_hyphen_regex = re.compile(r"^[a-zA-Z\-_]+$")
+only_alpha_hyphen_regex = re.compile(r'^(?=.*[-_])[a-zA-Z-_]+$')
 marked_string_regex = re.compile(r"^{{.+}}$")
 html_replace_regex = re.compile(r"\.shtml|\.html|\.htm")
 
@@ -58,6 +58,47 @@ def has_special_symbol(value_str):
     # 如果结果非空，表明至少有一个特殊符号存在
     return bool(set(value_str) & SPECIAL_SYMBOLS)
 
+
+def is_mixNum(part):
+    OneNumberRegex = re.compile(r'\d')  # 正则表达式，匹配任何数字
+    #path_parts = ["somepart1", "part2with456", "anotherpart789"]  # 示例的部分路径列表
+    #MixNumMark = "MIXED_NUMBERS"  # 假设这是我们想要替换的值
+
+    b = OneNumberRegex.sub('0', part)  # 替换字符串中的数字为'0'
+    if b.count('0') >= 3:  # 如果'0'的数量超过3
+        return True
+    return False
+
+def can_convert_to_number(s):
+    try:
+        # 尝试转换为整数
+        int(s)
+        return True
+    except ValueError:
+        pass
+
+    try:
+        # 尝试转换为浮点数
+        float(s)
+        return True
+    except ValueError:
+        pass
+
+    return False
+
+def can_convert_to_bool(s):
+    true_set = {"true"}
+    false_set = {"false"}
+
+    s_lower = s.strip().lower()  # 去除空白并转为小写
+
+    if s_lower in true_set:
+        return True
+    elif s_lower in false_set:
+        return True
+    else:
+        return False
+
 class SmartFilter:
     def __init__(self, strict_mode=False):
         self.strict_mode = strict_mode
@@ -67,13 +108,13 @@ class SmartFilter:
     def mark_param_value(self, param_map, url,method):
         marked_param_map = {}
         for key, value in param_map.items():
-            if isinstance(value, bool):
+            if isinstance(value, bool) or can_convert_to_bool(value):
                 marked_param_map[key] = BoolMark
                 continue
             if isinstance(value, list):
                 marked_param_map[key] = ListMark
                 continue
-            if isinstance(value, float) or isinstance(value, int):
+            if isinstance(value, float) or isinstance(value, int) or can_convert_to_number(value):
                 marked_param_map[key] = NumberMark
                 continue
 
@@ -87,8 +128,8 @@ class SmartFilter:
                 marked_param_map[key] = CustomValueMark
             elif only_alpha_upper_regex.match(value_str):
                 marked_param_map[key] = UpperMark
-            elif len(value_str) >= 24:
-                marked_param_map[key] = TooLongMark
+            elif only_number_regex.match(time_symbol_regex.sub("", value_str)):
+                marked_param_map[key] = TimeMark
             elif only_number_regex.match(value_str) or only_number_regex.match(num_symbol_regex.sub("", value_str)):
                 marked_param_map[key] = NumberMark
             elif chinese_regex.search(value_str):
@@ -97,18 +138,18 @@ class SmartFilter:
                 marked_param_map[key] = UrlEncodeMark
             elif unicode_regex.search(value_str):
                 marked_param_map[key] = UnicodeMark
-            elif only_number_regex.match(time_symbol_regex.sub("", value_str)):
-                marked_param_map[key] = TimeMark
             elif only_alpha_num_regex.match(value_str) and number_regex.search(value_str):
                 marked_param_map[key] = MixAlphaNumMark
             elif only_alpha_hyphen_regex.match(value_str):
                 marked_param_map[key] = MixAlphaHyphen
             elif has_special_symbol(value_str):
                 marked_param_map[key] = MixSymbolMark
-            elif self.is_mixNum(value_str)==True:
+            elif is_mixNum(value_str) == True:
                 marked_param_map[key] = MixNumMark
-            elif self.strict_mode and not alpha_lower_regex.search(value_str):
+            elif not alpha_lower_regex.search(value_str):
                 marked_param_map[key] = NoLowerAlphaMark
+            elif len(value_str) >= 32:
+                marked_param_map[key] = TooLongMark
             else:
                 # Check for mixed string mark condition
                 count = 0
@@ -126,12 +167,9 @@ class SmartFilter:
                     marked_param_map[key] = value
         return marked_param_map
 
-    def is_mixNum(self,part):
-        OneNumberRegex = re.compile(r'\d')  # 正则表达式，匹配任何数字
-        b = OneNumberRegex.sub('0', part)  # 替换字符串中的数字为'0'
-        if b.count('0') >= 3:  # 如果'0'的数量超过3
-            return True
-        return False
+
+
+
 
     def mark_path(self,path):
         path_parts = path.split('/')
@@ -156,7 +194,7 @@ class SmartFilter:
                 path_parts[index] = UpperMark
             elif only_number_regex.match(num_symbol_regex.sub("", part)):
                 path_parts[index] = NumberMark
-            elif self.is_mixNum(part)==True:
+            elif is_mixNum(part)==True:
                 path_parts[index] = MixNumMark
 
         new_path = '/'.join(path_parts)
